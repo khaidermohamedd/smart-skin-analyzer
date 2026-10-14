@@ -1,0 +1,17 @@
+{
+  "rides_densite": {
+    "n": 100,
+    "mediane": 0.905,
+    "q25": 0.5825,
+    "q75": 1.3125,
+    "q90": 2.3170000000000006
+  },
+  "acne_par_photo": {
+    "photos_avec_visage": 125,
+    "photos_test": 146,
+    "correlation": 0.7468637549629867,
+    "erreur_abs_moyenne": 5.984,
+    "annote_moyen": 11.472,
+    "detecte_moyen": 6.112
+  }
+}

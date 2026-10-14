@@ -1,0 +1,9 @@
+# Application (PC Linux/WSL, Raspberry Pi) - les modèles sont lus par OpenCV, pas besoin de PyTorch
+opencv-contrib-python>=4.10
+numpy
+scikit-image
+pillow
+pyserial
+reportlab            # génération du guide PDF (docs/build_guide.py)
+mediapipe            # optionnel : 478 points du visage (sinon moteur OpenCV 68 points)
+# Entraînement (GPU) : voir training/wsl_setup.sh (torch, ultralytics, segmentation-models-pytorch...)

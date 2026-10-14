@@ -1,0 +1,13 @@
+# Gros fichiers (modèles) stockés avec Git LFS
+*.onnx filter=lfs diff=lfs merge=lfs -text
+*.pt filter=lfs diff=lfs merge=lfs -text
+*.task filter=lfs diff=lfs merge=lfs -text
+skin_analyzer/models/lbfmodel.yaml filter=lfs diff=lfs merge=lfs -text
+# Scripts shell : toujours en fin de ligne Unix (Raspberry Pi / WSL)
+*.sh text eol=lf
+
+# Fichiers binaires : jamais de conversion de fin de ligne
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary

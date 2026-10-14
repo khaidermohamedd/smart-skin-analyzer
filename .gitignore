@@ -1,0 +1,19 @@
+# Secrets
+roboflow_key.txt
+*.key
+.env
+
+# Environnements / caches
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Données et sorties lourdes (hors dépôt, voir docs/CONTEXTE_SESSION.md)
+datasets/
+runs/
+results/
+weights/
+
+# Poids pré-entraînés téléchargés automatiquement par Ultralytics
+/yolo*.pt
