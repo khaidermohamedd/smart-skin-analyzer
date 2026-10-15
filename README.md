@@ -44,3 +44,14 @@ Sur le Raspberry Pi : `bash deploy/setup_pi.sh` (voir le chapitre 9 du guide).
 Les bases ne sont pas dans le dépôt : `python -m training.download_data` les télécharge.
 
 **Indication cosmétique, pas un diagnostic médical.**
+
+## Licences et données
+
+- **Bases d'entraînement** (non incluses) : ACNE04 (X. Wu et al., ICCV 2019, *usage académique
+  uniquement*) et FFHQ-Wrinkle (J. Moon et al., ICPR 2024, *CC BY-NC-SA 4.0*), construite sur FFHQ
+  (NVIDIA, photos Flickr sous licences Creative Commons).
+- **Modèles** (`skin_analyzer/models/acne_yolo.*`, `wrinkle_unet.*`) et **figures** de `docs/`
+  issus de ces bases : diffusés pour un usage **académique et non commercial** uniquement, en
+  respectant les conditions des bases d'origine et en citant les articles ci-dessus.
+- Modèles tiers : MediaPipe Face Landmarker (Google, Apache 2.0), YuNet (OpenCV Zoo),
+  Facemark LBF (OpenCV contrib), YOLO11 (Ultralytics, AGPL-3.0).
