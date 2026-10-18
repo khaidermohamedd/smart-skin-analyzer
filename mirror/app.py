@@ -9,6 +9,7 @@
 États :  ATTENTE -> GUIDAGE -> COMPTE (3,2,1) -> ANALYSE -> RÉSULTATS -> ATTENTE
 """
 import argparse
+from datetime import datetime
 import threading
 import time
 from pathlib import Path
@@ -21,6 +22,7 @@ from skin_analyzer.visualize import annotate
 from . import config, history, routine, ui
 from .camera import open_camera
 from .esp32 import ESP32Link, SimulatedLink
+from .keyboard import KeyboardListener
 
 
 class Mirror:
@@ -34,6 +36,7 @@ class Mirror:
         print(f"[miroir] modèles profonds actifs : {list(self.analyzer.dl) or 'aucun'}")
         self.state, self.t_state = None, time.time()
         self.t_good = self.t_seen = None
+        self.manual = False                # compte à rebours lancé au clavier (sans capteur de distance)
         self.result = self.error = None
         self.worker = None
         self.set_state("attente")
@@ -43,8 +46,10 @@ class Mirror:
     # -------------------------------------------------------------------------
     def set_state(self, s):
         if s != self.state:
-            print(f"[miroir] état : {s}")
+            print(f"[miroir] état : {s}", flush=True)
             self.state, self.t_state = s, time.time()
+            if s in ("attente", "resultats", "erreur"):
+                self.manual = False
             led = {"attente": "attente", "guidage": "detecte", "compte": "detecte",
                    "analyse": "analyse", "resultats": "ok", "erreur": "erreur"}[s]
             self.esp.led_state(led)
@@ -53,13 +58,21 @@ class Mirror:
         return dict(self.esp.latest) if self.esp.latest else {}
 
     def start_analysis(self):
-        self.set_state("analyse")
         self.result = self.error = None
         sensors = self.sensors()
+        # Rafale de photos (dans ce thread : la caméra ne sert pas à l'aperçu pendant ce temps)
+        try:
+            photo, sharpness = self.cam.capture_best()
+            print(f"[miroir] rafale : netteté visage {[round(x, 1) for x in sharpness]} -> "
+                  f"meilleure {max(sharpness):.1f} | caméra {getattr(self.cam, 'last_info', {})}", flush=True)
+        except Exception as e:
+            self.error = ("Erreur caméra", [str(e)[:60]])
+            self.set_state("erreur")
+            return
+        self.set_state("analyse")
 
         def job():
             try:
-                photo = self.cam.capture()
                 report, regions = self.analyzer.analyze(photo)
                 if report is None:
                     self.error = ("Visage non détecté", ["Placez-vous bien en face du miroir",
@@ -68,6 +81,8 @@ class Mirror:
                 annotated = annotate(report, regions)
                 payload = report_to_json(report)
                 payload["capteurs"] = sensors
+                payload["rafale_nettete"] = [round(x, 1) for x in sharpness]
+                payload["camera"] = getattr(self.cam, "last_info", {})
                 prev = history.previous_score()
                 history.save(payload, photo, annotated)
                 tips = routine.advice(report, sensors)
@@ -79,6 +94,19 @@ class Mirror:
 
         self.worker = threading.Thread(target=job, daemon=True)
         self.worker.start()
+
+    def shutdown_pi(self, _frame=None):
+        """Affiche un message puis éteint proprement le Raspberry Pi."""
+        print("[miroir] arrêt du Raspberry Pi demandé (Échap maintenu)", flush=True)
+        self.esp.led_state("eteint")
+        try:
+            cv2.imshow("miroir", ui.screen_error("Extinction...", [
+                "Attendez que la LED verte du Pi s'arrête,", "puis débranchez l'alimentation"]))
+            cv2.waitKey(1500)
+        except cv2.error:
+            pass
+        import subprocess
+        subprocess.Popen(["sudo", "-n", "shutdown", "-h", "now"])
 
     # -------------------------------------------------------------------------
     def step(self):
@@ -92,9 +120,14 @@ class Mirror:
         absent_long = self.t_seen is None or now - self.t_seen > config.ABSENT_S
 
         s = self.state
+        live = config.LIVE_PREVIEW and s in ("attente", "guidage", "compte")
+        frame = self.cam.preview() if live else None
         if s == "attente":
             if present:
                 self.set_state("guidage")
+            if live:
+                hint = "ESPACE pour analyser votre peau" if not self.esp.connected                     else "Approchez-vous pour analyser votre peau"
+                return ui.screen_live(frame, datetime.now().strftime("%H:%M"), hint)
             return ui.screen_idle(self.sensors(), self.esp.connected)
 
         if s == "guidage":
@@ -106,10 +139,14 @@ class Mirror:
                     self.set_state("compte")
             else:
                 self.t_good = None
+            if live:
+                return ui.screen_live(frame, ui.guide_message(dist if present else None)[0],
+                                      "Visage dans l'ovale, cheveux dégagés du front",
+                                      color=ui.guide_message(dist if present else None)[1])
             return ui.screen_guide(dist if present else None)
 
         if s == "compte":
-            if not good:
+            if not good and not self.manual:
                 self.t_good = None
                 self.set_state("guidage")
                 return ui.screen_guide(dist if present else None)
@@ -117,6 +154,8 @@ class Mirror:
             if left <= 0:
                 self.start_analysis()
                 return ui.screen_analysis(self.t_state)
+            if live:
+                return ui.screen_live(frame, "Ne bougez plus...", "Regardez la caméra", big=str(left))
             return ui.screen_countdown(left)
 
         if s == "analyse":
@@ -125,7 +164,8 @@ class Mirror:
             return ui.screen_analysis(self.t_state)
 
         if s == "resultats":
-            if now - self.t_state > config.RESULT_S or (absent_long and now - self.t_state > 8):
+            sensor_ok = self.esp.connected and self.esp.fresh      # sans capteur : pas de détection de départ
+            if now - self.t_state > config.RESULT_S or (sensor_ok and absent_long and now - self.t_state > 8):
                 self.set_state("attente")
             return ui.screen_results(*self.result)
 
@@ -160,6 +200,7 @@ class Mirror:
             cv2.namedWindow("miroir", cv2.WINDOW_NORMAL)
             if config.FULLSCREEN and not self.args.windowed:
                 cv2.setWindowProperty("miroir", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        self.keys = KeyboardListener()     # clavier lu directement (fenêtre sans focus sur le Pi)
         t0 = time.time()
         try:
             while True:
@@ -169,13 +210,35 @@ class Mirror:
                     self.dump(frame)
                 if self.args.scenario and not self.scenario(time.time() - t0):
                     break
+                # Déclenchement à distance : créer ce fichier lance une analyse
+                # (ex. depuis le PC : ssh pi@skinmirror.local touch /tmp/skin_mirror_analyse)
+                remote = config.TRIGGER_FILE.exists()
+                if remote:
+                    config.TRIGGER_FILE.unlink(missing_ok=True)
+                if (remote or self.keys.take("KEY_SPACE")) and self.state in ("attente", "guidage"):
+                    self.manual = True             # 3-2-1 puis photo : le temps de ne plus bouger
+                    self.set_state("compte")
+                if self.keys.take("KEY_Q"):
+                    break
+                # Échap maintenu : arrêt propre du Raspberry Pi (pas besoin de souris)
+                esc = self.keys.held_for("KEY_ESC")
+                if esc >= config.SHUTDOWN_HOLD_S:
+                    self.shutdown_pi(frame if show else None)
+                    break
+                if show and esc > 0.5:
+                    frame = ui.screen_error("Arrêt du miroir...",
+                                            [f"Maintenez Échap encore {config.SHUTDOWN_HOLD_S - esc:.0f} s",
+                                             "pour éteindre le Raspberry Pi"])
                 if show:
                     cv2.imshow("miroir", frame)
-                    key = cv2.waitKey(int(1000 / config.FPS)) & 0xFF
-                    if key in (ord("q"), 27):
+                    # Pendant l'analyse : 2 images/s seulement, le processeur va aux modèles
+                    fps = 2 if self.state == "analyse" else config.FPS
+                    key = cv2.waitKey(int(1000 / fps)) & 0xFF
+                    if key == ord("q"):                 # Échap est réservé à l'extinction (maintenu 3 s)
                         break
                     if key == ord(" ") and self.state in ("attente", "guidage"):
-                        self.start_analysis()
+                        self.manual = True
+                        self.set_state("compte")
                     if key == ord("p") and isinstance(self.esp, SimulatedLink):
                         self.esp.present = not self.esp.present
                 else:

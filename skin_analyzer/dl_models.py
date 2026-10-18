@@ -1,16 +1,43 @@
-"""Inférence des modèles d'apprentissage profond (fichiers ONNX lus par OpenCV DNN).
+"""Inférence des modèles d'apprentissage profond (fichiers ONNX).
 
   * acne_yolo.onnx     : YOLO11 entraîné sur ACNE04 (détection, 1 classe)
   * wrinkle_unet.onnx  : U-Net entraîné sur FFHQ-Wrinkle (segmentation des rides)
 
-OpenCV DNN évite toute dépendance supplémentaire (PC Windows et Raspberry Pi).
+Moteur : ONNX Runtime s'il est installé (≈ 2x plus rapide sur le Raspberry Pi),
+sinon OpenCV DNN (aucune dépendance supplémentaire).
 """
 import json
+import os
 
 import cv2
 import numpy as np
 
 from . import config
+
+
+class _Net:
+    """Exécute un modèle ONNX avec ONNX Runtime, ou OpenCV DNN à défaut."""
+
+    def __init__(self, path):
+        try:
+            import onnxruntime as ort
+            so = ort.SessionOptions()
+            so.intra_op_num_threads = os.cpu_count() or 4
+            so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            self.sess = ort.InferenceSession(str(path), so, providers=["CPUExecutionProvider"])
+            self.input = self.sess.get_inputs()[0].name
+            self.engine = "onnxruntime"
+        except ImportError:
+            self.sess = None
+            self.net = cv2.dnn.readNetFromONNX(str(path))
+            self.engine = "opencv-dnn"
+
+    def __call__(self, x):
+        x = np.ascontiguousarray(x, np.float32)
+        if self.sess is not None:
+            return self.sess.run(None, {self.input: x})[0]
+        self.net.setInput(x)
+        return self.net.forward()
 
 
 # ---------------------------------------------------------------------------
@@ -42,10 +69,14 @@ def align_ffhq(img, quad, size):
 
 class WrinkleSegmenter:
     def __init__(self, onnx_path=config.WRINKLE_MODEL, meta_path=config.WRINKLE_META):
-        self.net = cv2.dnn.readNetFromONNX(str(onnx_path))
+        self.net = _Net(onnx_path)
         meta = json.loads(meta_path.read_text()) if meta_path.exists() else {}
         self.size = meta.get("input", 1024)
         self.thr = meta.get("seuil", 0.5)
+        # Taille réellement envoyée au réseau (réduite sur le Raspberry Pi pour la vitesse) ;
+        # le seuil correspondant a été choisi sur la validation pour cette taille.
+        self.run_size = config.WRINKLE_INPUT or self.size
+        self.thr = meta.get("seuils_par_taille", {}).get(str(self.run_size), self.thr)
         self.mean = np.array(meta.get("mean", [0.485, 0.456, 0.406]), np.float32)
         self.std = np.array(meta.get("std", [0.229, 0.224, 0.225]), np.float32)
         self.test_metrics = meta.get("test", {})
@@ -53,14 +84,16 @@ class WrinkleSegmenter:
     def predict(self, bgr, quad, tta=True):
         """Masque de rides (uint8 0/255) dans le repère de `bgr`, et carte de probabilité."""
         aligned, M = align_ffhq(bgr, quad, self.size)
+        if self.run_size != self.size:
+            aligned = cv2.resize(aligned, (self.run_size, self.run_size), interpolation=cv2.INTER_AREA)
         rgb = cv2.cvtColor(aligned, cv2.COLOR_BGR2RGB).astype(np.float32) / 255
         x = ((rgb - self.mean) / self.std).transpose(2, 0, 1)[None]
-        self.net.setInput(np.ascontiguousarray(x))
-        logits = self.net.forward()[0, 0]
-        if tta:   # 2e passage sur l'image miroir (comme à l'évaluation) ; à couper sur le Pi si trop lent
-            self.net.setInput(np.ascontiguousarray(x[..., ::-1]))
-            logits = (logits + self.net.forward()[0, 0][:, ::-1]) / 2
+        logits = self.net(x)[0, 0]
+        if tta:   # 2e passage sur l'image miroir (comme à l'évaluation)
+            logits = (logits + self.net(x[..., ::-1])[0, 0][:, ::-1]) / 2
         prob = 1 / (1 + np.exp(-logits))
+        if self.run_size != self.size:
+            prob = cv2.resize(prob, (self.size, self.size), interpolation=cv2.INTER_LINEAR)
         Minv = cv2.invertAffineTransform(M)
         h, w = bgr.shape[:2]
         prob_img = cv2.warpAffine(prob.astype(np.float32), Minv, (w, h), flags=cv2.INTER_LINEAR)
@@ -70,7 +103,7 @@ class WrinkleSegmenter:
 # ---------------------------------------------------------------------------
 class AcneDetector:
     def __init__(self, onnx_path=config.ACNE_MODEL, imgsz=1024):
-        self.net = cv2.dnn.readNetFromONNX(str(onnx_path))
+        self.net = _Net(onnx_path)
         self.imgsz = imgsz
 
     def _run(self, tile):
@@ -80,8 +113,7 @@ class AcneDetector:
         canvas = np.full((self.imgsz, self.imgsz, 3), 114, np.uint8)
         canvas[:int(round(h * s)), :int(round(w * s))] = cv2.resize(tile, (int(round(w * s)), int(round(h * s))))
         blob = cv2.dnn.blobFromImage(canvas, 1 / 255.0, swapRB=True)
-        self.net.setInput(blob)
-        out = self.net.forward()[0]                      # (5, N) : cx, cy, w, h, score
+        out = self.net(blob)[0]                          # (5, N) : cx, cy, w, h, score
         out = out.T
         out = out[out[:, 4] > config.ACNE_CONF * 0.5]
         cx, cy, bw, bh = (out[:, i] / s for i in range(4))
