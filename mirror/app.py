@@ -46,16 +46,18 @@ class Mirror:
             print(f"[miroir] état : {s}")
             self.state, self.t_state = s, time.time()
             led = {"attente": "attente", "guidage": "detecte", "compte": "detecte",
-                   "analyse": "analyse", "resultats": "ok", "erreur": "erreur"}[s]
+                   "temperature": "detecte", "analyse": "analyse", "resultats": "ok",
+                   "erreur": "erreur"}[s]
             self.esp.led_state(led)
 
     def sensors(self):
         return dict(self.esp.latest) if self.esp.latest else {}
 
     def start_analysis(self):
-        self.set_state("analyse")
-        self.result = self.error = None
-        sensors = self.sensors()
+        """Photo + analyse IA en arrière-plan ; pendant ce temps, étape « température »."""
+        self.result = self.error = self.analysis = None
+        self.temps, self.t_sample = [], 0.0
+        self.set_state("temperature")
 
         def job():
             try:
@@ -65,22 +67,42 @@ class Mirror:
                     self.error = ("Visage non détecté", ["Placez-vous bien en face du miroir",
                                                          "et dégagez votre visage"])
                     return
-                annotated = annotate(report, regions)
-                payload = report_to_json(report)
-                payload["capteurs"] = sensors
-                sensors["type_peau"] = skin_type.estimate(sensors)
-                payload["type_peau"] = sensors["type_peau"]
-                prev = history.previous_score()
-                history.save(payload, photo, annotated)
-                tips = routine.advice(report, sensors)
-                self.result = (report, sensors, tips, prev)
-                if self.args.dump:
-                    cv2.imwrite(str(Path(self.args.dump) / "analyse_annotee.jpg"), annotated)
+                self.analysis = (report, regions, photo, annotate(report, regions))
             except Exception as e:                       # le miroir ne doit jamais planter
                 self.error = ("Erreur pendant l'analyse", [str(e)[:60]])
 
         self.worker = threading.Thread(target=job, daemon=True)
         self.worker.start()
+
+    def sample_temperature(self, now, dist):
+        """Garde les lectures du MLX90614 prises dans la zone fiable (10-30 cm)."""
+        t = self.esp.latest.get("t_visage") if self.esp.latest else None
+        if (t is not None and dist is not None and now - self.t_sample >= config.TEMP_SAMPLE_PERIOD_S
+                and config.TEMP_DIST_MIN_MM <= dist <= config.TEMP_DIST_MAX_MM):
+            self.temps.append((t, dist))
+            self.t_sample = now
+
+    def finalize(self):
+        """Assemble le rapport final quand l'analyse ET la mesure de température sont finies."""
+        if self.error or self.analysis is None:
+            self.error = self.error or ("Erreur pendant l'analyse", ["résultat vide"])
+            return False
+        report, regions, photo, annotated = self.analysis
+        sensors = self.sensors()                          # air, humidité : dernière mesure
+        if self.temps:                                    # température : médiane des lectures de près
+            ts = sorted(t for t, _ in self.temps)
+            ds = sorted(d for _, d in self.temps)
+            sensors["t_visage"], sensors["dist_mm"] = ts[len(ts) // 2], ds[len(ds) // 2]
+        sensors["type_peau"] = skin_type.estimate(sensors)
+        payload = report_to_json(report)
+        payload["capteurs"] = sensors
+        payload["type_peau"] = sensors["type_peau"]
+        prev = history.previous_score()
+        history.save(payload, photo, annotated)
+        self.result = (report, sensors, routine.advice(report, sensors), prev)
+        if self.args.dump:
+            cv2.imwrite(str(Path(self.args.dump) / "analyse_annotee.jpg"), annotated)
+        return True
 
     # -------------------------------------------------------------------------
     def step(self):
@@ -118,12 +140,19 @@ class Mirror:
             left = config.COUNTDOWN_S - int(now - self.t_state)
             if left <= 0:
                 self.start_analysis()
-                return ui.screen_analysis(self.t_state)
+                return ui.screen_temperature(dist, 0, config.TEMP_SAMPLES, config.TEMP_TIMEOUT_S)
             return ui.screen_countdown(left)
+
+        if s == "temperature":
+            self.sample_temperature(now, dist)
+            left = config.TEMP_TIMEOUT_S - (now - self.t_state)
+            if len(self.temps) >= config.TEMP_SAMPLES or left <= 0:
+                self.set_state("analyse")
+            return ui.screen_temperature(dist, len(self.temps), config.TEMP_SAMPLES, left)
 
         if s == "analyse":
             if self.worker and not self.worker.is_alive():
-                self.set_state("resultats" if self.result else "erreur")
+                self.set_state("resultats" if self.finalize() else "erreur")
             return ui.screen_analysis(self.t_state)
 
         if s == "resultats":
@@ -150,6 +179,8 @@ class Mirror:
         e = self.esp
         if 2 < t < 4:
             e.present, e.dist = True, 650
+        elif t >= 4 and self.state == "temperature":
+            e.present, e.dist = True, 200
         elif t >= 4 and self.state not in ("resultats",):
             e.present, e.dist = True, 400
         if self.state == "resultats" and time.time() - self.t_state > 1.5:

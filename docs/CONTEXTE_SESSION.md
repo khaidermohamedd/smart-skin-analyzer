@@ -102,8 +102,12 @@ Arduino **Uno** + MLX90614 + DHT22 + **Sharp IR analogique** (A0), JSON toutes l
 - **Limites signalées** : ce sont des règles, pas un modèle entraîné (son dataset est généré par ces
   mêmes règles) ; le DHT22 mesure l'humidité de l'**air**, pas l'hydratation de la peau ; le MLX90614
   n'est fiable qu'entre 10 et 30 cm alors que la photo se prend à 30-48 cm.
-- **À décider** : carte finale (Uno + Sharp ou ESP32 + VL53L0X) ; mesure de température en 2 temps
-  (photo à 40 cm puis « approchez-vous à 20 cm ») ; capteur capacitif d'hydratation (au contact).
+- **Décidé (18/10)** : carte finale = **Arduino Uno + Sharp IR**. Firmware adapté :
+  `firmware/uno_capteurs/uno_capteurs.ino` (même JSON que le binôme, envoi 4×/s, LED RGB sur D9/D10/D11,
+  compile : 40 % flash / 34 % RAM). L'ESP32 reste une variante compatible.
+- **Décidé (18/10)** : température en **2 temps** : photo à 30-48 cm, puis « Approchez-vous à 20 cm »,
+  4 lectures dans 10-30 cm, médiane ; l'analyse IA tourne en parallèle (état `temperature` dans `app.py`).
+- Option non retenue pour l'instant : capteur capacitif d'hydratation au contact.
 
 ## 5. Reste à faire
 

@@ -909,7 +909,25 @@ quad = [c - x - y, c - x + y, c + x + y, c + x - y]      # même formule que NVl
         ["LED RGB", "État du miroir : attente, détection, analyse, OK, erreur", "GPIO25/26/27 + 220 Ω"],
     ], [4.2, 7.8, 4.4])
 
-    h2("9.2 Câblage de l'ESP32")
+    h2("9.2 Carte retenue : Arduino Uno + capteur Sharp IR")
+    p("La partie capteurs a été réalisée par J. Salek (dépôt <font name='Mono'>jihanesalek263-png/"
+      "SmartSkinAnalyzer</font>) sur un <b>Arduino Uno</b> avec un capteur de distance <b>Sharp GP2Y0A21</b> "
+      "(analogique, 10-80 cm). C'est la carte retenue pour le miroir. Le firmware "
+      "<font name='Mono'>firmware/uno_capteurs/uno_capteurs.ino</font> reprend le sien avec le <b>même format "
+      "JSON</b>, en ajoutant un envoi 4 fois par seconde (au lieu de toutes les 2 s, pour guider la personne en "
+      "direct) et le pilotage de la LED RGB. Le miroir reconnaît automatiquement l'Uno ou l'ESP32.")
+    table([
+        ["Module", "Broche module", "Broche Arduino Uno", "Remarque"],
+        ["MLX90614", "VIN / GND", "3.3V / GND", "jamais 5 V sur un capteur nu"],
+        ["MLX90614", "SDA / SCL", "A4 / A5", "bus I2C de l'Uno"],
+        ["DHT22", "patte 1 / 2 / 4", "5V / D2 / GND", "résistance 10 kΩ entre les pattes 1 et 2"],
+        ["Sharp GP2Y0A21", "rouge / noir / jaune", "5V / GND / A0", "distance par la tension analogique"],
+        ["LED RGB", "R / G / B", "D9 / D10 / D11", "220 Ω sur chaque couleur ; patte commune au GND"],
+    ], [3.4, 3.6, 3.4, 6.0])
+    p("Le firmware compile pour l'Uno (40 % de la mémoire programme, 34 % de la RAM). Message envoyé : "
+      "<font name='Mono'>{\"distance_cm\":18.3,\"temp_peau\":33.4,\"temp_air\":24.1,\"humidite\":46.2}</font>.")
+
+    h2("9.2 bis Variante : câblage de l'ESP32")
     story.append(wiring_diagram())
     story.append(Paragraph("Figure 8 : câblage. Les deux capteurs I2C partagent les mêmes fils SDA/SCL "
                            "(adresses différentes : 0x5A et 0x29).", S["caption"]))
@@ -975,7 +993,9 @@ quad = [c - x - y, c - x + y, c + x + y, c + x - y]      # même formule que NVl
     h2("9.6 Programme du miroir (mirror/)")
     table([
         ["Fichier", "Rôle"],
-        ["app.py", "Machine à états : attente → guidage → compte à rebours → analyse → résultats"],
+        ["app.py", "Machine à états : attente → guidage → compte à rebours → photo → température de près → "
+                   "analyse → résultats"],
+        ["skin_type.py", "Type de peau (sèche, normale, mixte, grasse) : règles de J. Salek, affiché « indicatif »"],
         ["esp32.py", "Lecture des mesures dans un thread, reconnexion automatique, commandes de LED"],
         ["camera.py", "Pi Camera Module 3 (picamera2, mise au point avant la photo), webcam ou photo de test"],
         ["ui.py", "Écrans sur fond noir (horloge, guidage par la distance, 3-2-1, analyse, résultats)"],
@@ -985,6 +1005,19 @@ quad = [c - x - y, c - x + y, c + x + y, c + x - y]      # même formule que NVl
     ], [3, 13.4])
     figure("miroir_ecrans.png", "Figure 9 : écrans du miroir, capturés en mode test (personne simulée, "
            "analyse d'une photo ACNE04 par les deux modèles profonds).", 16)
+
+    h2("9.6 bis Température de la peau : mesure en 2 temps")
+    p("Le MLX90614 n'est fiable qu'entre 10 et 30 cm : plus loin, il voit aussi le décor et sous-estime la "
+      "température. La photo, elle, se prend à 30-48 cm pour cadrer tout le visage. Le miroir procède donc en "
+      "deux temps : après la photo, il affiche « Approchez-vous à 20 cm » avec une jauge de distance, fait "
+      "4 lectures de température dans la zone fiable et garde la <b>médiane</b>, pendant que l'analyse IA de la "
+      "photo continue en arrière-plan (aucun temps perdu). Sans lecture fiable au bout de 12 s, la dernière "
+      "valeur est gardée et le type de peau est marqué « peu fiable ».")
+    callout("Le type de peau repose sur des <b>règles fixées à la main</b> (et non sur un modèle entraîné : le jeu "
+            "de données d'origine est généré par ces mêmes règles). De plus, le DHT22 mesure l'humidité de "
+            "l'<b>air</b>, pas l'hydratation de la peau. Le résultat est donc affiché comme une estimation "
+            "indicative ; une vraie mesure d'hydratation demanderait un capteur capacitif au contact.",
+            WARN, "Limite du type de peau")
 
     h2("9.7 Mise en service, étape par étape")
     table([

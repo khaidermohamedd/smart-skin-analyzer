@@ -99,6 +99,38 @@ def screen_guide(dist):
     return _to_bgr(img)
 
 
+def screen_temperature(dist, n, need, left):
+    """Après la photo : on rapproche la personne à ~20 cm pour lire la température de la peau."""
+    img, d = _canvas()
+    lo_ok, hi_ok = config.TEMP_DIST_MIN_MM, config.TEMP_DIST_MAX_MM
+    if dist is None:
+        msg, col = "Approchez votre visage à 20 cm", WHITE
+    elif dist > hi_ok:
+        msg, col = "Approchez-vous encore", (0, 200, 255)
+    elif dist < lo_ok:
+        msg, col = "Un peu trop près", (255, 150, 0)
+    else:
+        msg, col = "Parfait, ne bougez pas", (0, 230, 120)
+    _center(d, 60, "Photo prise ✓  -  mesure de la température", 22, GREY)
+    _center(d, 130, msg, 40, col, bold=True)
+    x0, x1, y = 150, W - 150, 250
+    lo, hi = 50, 600
+    sx = lambda v: x0 + (min(max(v, lo), hi) - lo) / (hi - lo) * (x1 - x0)
+    d.rectangle([x0, y, x1, y + 14], outline=GREY)
+    d.rectangle([sx(lo_ok), y, sx(hi_ok), y + 14], fill=(0, 120, 60))
+    if dist is not None:
+        cx = sx(dist)
+        d.polygon([(cx, y - 4), (cx - 10, y - 22), (cx + 10, y - 22)], fill=WHITE)
+        _center(d, y + 30, f"{dist / 10:.0f} cm", 22, GREY)
+    # Progression des lectures
+    for i in range(need):
+        cx = W / 2 + (i - (need - 1) / 2) * 34
+        fill = (0, 230, 120) if i < n else (60, 60, 60)
+        d.ellipse([cx - 10, 345, cx + 10, 365], fill=fill)
+    _center(d, 400, f"L'analyse de la photo continue en même temps  ·  {max(left, 0):.0f} s", 18, GREY)
+    return _to_bgr(img)
+
+
 def screen_countdown(n):
     img, d = _canvas()
     _center(d, 110, str(n), 200, WHITE, bold=True)
