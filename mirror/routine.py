@@ -14,6 +14,12 @@ def advice(report, sensors):
         tips.append("Protection solaire SPF 30+ même par temps couvert")
     if c["pores"]["score"] >= 40:
         tips.append("Exfoliation douce une fois par semaine")
+    st = sensors.get("type_peau")
+    if st and st["fiable"]:
+        tips.append({"seche": "Peau plutôt sèche : crème riche le soir, nettoyant sans savon",
+                     "grasse": "Peau plutôt grasse : gel nettoyant et hydratant léger, non gras",
+                     "mixte": "Peau mixte : produits légers, insister sur l'hydratation des joues",
+                     "normale": "Peau normale : routine simple (nettoyer, hydrater, protéger)"}[st["type"]])
     hum = sensors.get("humidite")
     if hum is not None and hum < 35:
         tips.append(f"Air sec ({hum:.0f} %) : penser à bien hydrater la peau")

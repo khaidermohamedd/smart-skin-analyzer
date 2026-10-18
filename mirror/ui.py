@@ -147,6 +147,13 @@ def screen_results(report, sensors, tips, previous=None):
         d.text((W - 230, y), label, font=font(18), fill=GREY)
         d.text((W - 120, y), fmt.format(v) if v is not None else "-", font=font(18, True), fill=WHITE)
         y += 30
+    st = sensors.get("type_peau")
+    if st:
+        d.text((W - 230, y), "Type de peau", font=font(18), fill=GREY)
+        d.text((W - 230, y + 24), f"{st['label']} (indicatif)", font=font(18, True),
+               fill=WHITE if st["fiable"] else (200, 160, 80))
+        if not st["fiable"]:
+            d.text((W - 230, y + 48), "mesure " + st["court"], font=font(13), fill=(200, 160, 80))
 
     # 4 critères : barre de sévérité (plus la barre est longue, plus c'est marqué)
     y = 185

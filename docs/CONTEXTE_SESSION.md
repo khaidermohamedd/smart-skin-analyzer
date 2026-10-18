@@ -89,6 +89,22 @@ L'utilisateur a reçu le Raspberry Pi 4 Model B. Instructions données (étape 1
 
 En attente de l'utilisateur : nom d'utilisateur choisi, et confirmation que le bureau s'affiche.
 
+## 4 bis. Partie capteurs du binôme (intégrée le 18/10/2026)
+
+Dépôt de J. Salek : https://github.com/jihanesalek263-png/SmartSkinAnalyzer (copie locale : `D:\skin_ai\externe\`).
+Arduino **Uno** + MLX90614 + DHT22 + **Sharp IR analogique** (A0), JSON toutes les 2 s :
+`{"distance_cm":..,"temp_peau":..,"temp_air":..,"humidite":..}` ; règles fixes → type de peau
+(sèche / normale / mixte / grasse).
+
+- `mirror/esp32.py` accepte **les deux cartes** (ESP32 de ce dépôt et Uno du binôme), format détecté seul.
+- `mirror/skin_type.py` reprend ses règles à l'identique (vérifié : 200/200 sur son dataset) ;
+  affiché « indicatif » sur l'écran de résultats, conseil adapté si la mesure est fiable.
+- **Limites signalées** : ce sont des règles, pas un modèle entraîné (son dataset est généré par ces
+  mêmes règles) ; le DHT22 mesure l'humidité de l'**air**, pas l'hydratation de la peau ; le MLX90614
+  n'est fiable qu'entre 10 et 30 cm alors que la photo se prend à 30-48 cm.
+- **À décider** : carte finale (Uno + Sharp ou ESP32 + VL53L0X) ; mesure de température en 2 temps
+  (photo à 40 cm puis « approchez-vous à 20 cm ») ; capteur capacitif d'hydratation (au contact).
+
 ## 5. Reste à faire
 
 - [ ] Câbler l'ESP32 (figure 8 du guide), téléverser le firmware (LED rouge → vert → bleu au démarrage),

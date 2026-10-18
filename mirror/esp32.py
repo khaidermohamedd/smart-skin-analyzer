@@ -12,6 +12,15 @@ import time
 from . import config
 
 
+def from_uno(msg):
+    """Convertit le format de la carte Arduino Uno (dépôt jihanesalek263-png/SmartSkinAnalyzer)
+    vers le format du firmware ESP32 utilisé par le miroir."""
+    d = msg.get("distance_cm")
+    return {"type": "mesure", "dist_mm": round(d * 10) if d is not None else None,
+            "t_visage": msg.get("temp_peau"), "t_air": msg.get("temp_air"),
+            "humidite": msg.get("humidite")}
+
+
 def find_port():
     if sys.platform.startswith("win"):
         from serial.tools import list_ports
@@ -65,11 +74,17 @@ class ESP32Link:
             self.latest = msg
         elif msg.get("type") == "hello":
             self.info = msg
+        elif "erreur" in msg:
+            self.info = {"erreur": msg["erreur"]}
+        elif "distance_cm" in msg or "temp_peau" in msg:
+            self.latest = from_uno(msg)
+            self.info = self.info or {"firmware": "Arduino Uno (SmartSkinAnalyzer, J. Salek)"}
 
     # -- accès -----------------------------------------------------------------
     @property
     def fresh(self):
-        return time.time() - self.last_rx < 2.0
+        # L'Arduino Uno n'envoie qu'une mesure toutes les 2 s : marge de 5 s
+        return time.time() - self.last_rx < 5.0
 
     def distance(self):
         return self.latest.get("dist_mm") if self.fresh else None

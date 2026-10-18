@@ -18,7 +18,7 @@ import cv2
 from skin_analyzer.analyzer import SkinAnalyzer, report_to_json
 from skin_analyzer.visualize import annotate
 
-from . import config, history, routine, ui
+from . import config, history, routine, skin_type, ui
 from .camera import open_camera
 from .esp32 import ESP32Link, SimulatedLink
 
@@ -68,6 +68,8 @@ class Mirror:
                 annotated = annotate(report, regions)
                 payload = report_to_json(report)
                 payload["capteurs"] = sensors
+                sensors["type_peau"] = skin_type.estimate(sensors)
+                payload["type_peau"] = sensors["type_peau"]
                 prev = history.previous_score()
                 history.save(payload, photo, annotated)
                 tips = routine.advice(report, sensors)
