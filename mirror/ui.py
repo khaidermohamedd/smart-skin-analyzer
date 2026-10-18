@@ -5,6 +5,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
@@ -74,16 +75,20 @@ def screen_idle(sensors, esp_ok):
     return _to_bgr(img)
 
 
+def guide_message(dist):
+    """(message, couleur) selon la distance du visage (None = inconnue)."""
+    if dist is None:
+        return "Placez votre visage face au miroir", WHITE
+    if dist > config.DIST_MAX_MM:
+        return "Rapprochez-vous un peu", (0, 200, 255)
+    if dist < config.DIST_MIN_MM:
+        return "Reculez un peu", (255, 150, 0)
+    return "Parfait, ne bougez plus", (0, 230, 120)
+
+
 def screen_guide(dist):
     img, d = _canvas()
-    if dist is None:
-        msg, col = "Placez votre visage face au miroir", WHITE
-    elif dist > config.DIST_MAX_MM:
-        msg, col = "Rapprochez-vous un peu", (0, 200, 255)
-    elif dist < config.DIST_MIN_MM:
-        msg, col = "Reculez un peu", (255, 150, 0)
-    else:
-        msg, col = "Parfait, ne bougez plus", (0, 230, 120)
+    msg, col = guide_message(dist)
     _center(d, 150, msg, 40, col, bold=True)
     # Jauge de distance : zone idéale en vert
     x0, x1, y = 150, W - 150, 280
@@ -208,3 +213,39 @@ def screen_results(report, sensors, tips, previous=None):
         y += 26
     d.text((30, H - 22), "Indication cosmétique, pas un diagnostic médical.", font=font(13), fill=(110, 110, 110))
     return _to_bgr(img)
+
+
+# ---------------------------------------------------------------------------
+def screen_live(frame, title, subtitle="", big=None, color=WHITE):
+    """Caméra en temps réel, à SA résolution (pas réduite en 800x480 puis étirée) :
+    l'image est nette sur un grand écran. Les textes sont dessinés sur de petits bandeaux."""
+    img = frame.copy()
+    h, w = img.shape[:2]
+    k = h / H                                            # échelle par rapport à l'écran 800x480
+
+    def band(y0, y1, text, size, col, bold=False):
+        roi = img[y0:y1]
+        roi[:] = (roi * 0.4).astype(np.uint8)            # bandeau assombri
+        pil = Image.fromarray(roi[:, :, ::-1].copy())
+        d = ImageDraw.Draw(pil)
+        f = font(int(size * k), bold)
+        tw = d.textlength(text, font=f)
+        d.text(((w - tw) / 2, (y1 - y0 - size * k * 1.2) / 2), text, font=f, fill=col)
+        img[y0:y1] = np.array(pil)[:, :, ::-1]
+
+    band(0, int(64 * k), title, 28, color, bold=True)
+    if subtitle:
+        band(h - int(54 * k), h, subtitle, 20, GREY)
+    # ovale de visée : où placer le visage
+    cv2.ellipse(img, (w // 2, h // 2 + int(10 * k)), (int(120 * k), int(160 * k)), 0, 0, 360,
+                (200, 200, 200), max(1, int(2 * k)), cv2.LINE_AA)
+    if big is not None:                                  # chiffre à droite : le visage reste visible
+        f = font(int(150 * k), True)
+        x0, y0 = w - int(200 * k), int(110 * k)
+        roi = img[y0:y0 + int(200 * k), x0:w]
+        pil = Image.fromarray(roi[:, :, ::-1].copy())
+        d = ImageDraw.Draw(pil)
+        d.text((int(4 * k), int(4 * k)), big, font=f, fill=(0, 0, 0))
+        d.text((0, 0), big, font=f, fill=WHITE)
+        img[y0:y0 + roi.shape[0], x0:w] = np.array(pil)[:, :, ::-1]
+    return img

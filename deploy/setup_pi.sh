@@ -9,14 +9,14 @@ echo "=== Projet : $PROJET"
 
 echo "=== 1/5 Paquets système (caméra, polices, port série)"
 sudo apt-get update
-sudo apt-get install -y python3-venv python3-pip python3-picamera2 python3-serial fonts-dejavu-core
+sudo apt-get install -y python3-venv python3-pip python3-picamera2 python3-serial python3-evdev fonts-dejavu-core
 
 echo "=== 2/5 Environnement Python (garde accès à picamera2, installé par le système)"
 python3 -m venv --system-site-packages .venv
 .venv/bin/pip install --upgrade pip
-.venv/bin/pip install opencv-contrib-python scikit-image pillow
-# MediaPipe (478 points, plus précis) : optionnel, le programme utilise OpenCV s'il manque
-.venv/bin/pip install mediapipe || echo "(MediaPipe non disponible pour cette version : moteur OpenCV utilisé)"
+.venv/bin/pip install opencv-contrib-python scikit-image pillow onnxruntime
+# MediaPipe n'est PAS installé : ses binaires ARM exigent des instructions (AES) absentes du
+# processeur du Pi 4 -> plantage. Le moteur OpenCV 68 points est utilisé.
 
 echo "=== 3/5 Accès au port série de l'ESP32"
 sudo usermod -aG dialout "$USER"

@@ -235,14 +235,20 @@ class FaceRegionExtractor:
         return self._fill(shape, list(brows) + top)
 
     @staticmethod
-    def _skin_color_mask(img, reference):
-        """Pixels dont la couleur est proche de la peau des joues (rejette cheveux, fond...)."""
-        lab = cv2.cvtColor(cv2.GaussianBlur(img, (0, 0), 2), cv2.COLOR_BGR2LAB).astype(np.float32)
-        ref = np.median(lab[reference > 0], axis=0)
+    def _skin_color_mask(lab, zone):
+        """Pixels de `zone` dont la couleur est proche de la peau de CETTE zone (rejette cheveux,
+        barbe, fond). La référence est propre à chaque zone : un côté du visage plus éclairé
+        que l'autre ne fait plus disparaître une joue entière."""
+        px = lab[zone > 0]
+        if len(px) < 50:
+            return np.zeros(zone.shape, np.uint8)
+        # Référence = pixels les plus clairs de la zone (la peau est plus claire que cheveux/barbe)
+        bright = px[px[:, 0] >= np.percentile(px[:, 0], 40)]
+        ref = np.median(bright, axis=0)
         diff = lab - ref
-        diff[..., 0] *= 0.5            # on tolère davantage les variations d'éclairage
+        diff[..., 0] *= config.SKIN_L_WEIGHT          # tolérance aux variations d'éclairage
         dist = np.sqrt((diff ** 2).sum(axis=2))
-        mask = (dist < config.SKIN_COLOR_TOLERANCE).astype(np.uint8) * 255
+        mask = ((dist < config.SKIN_COLOR_TOLERANCE) & (zone > 0)).astype(np.uint8) * 255
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
         return FaceRegionExtractor._fill_holes(mask, config.SKIN_HOLE_MAX_PX)
 
@@ -286,8 +292,8 @@ class FaceRegionExtractor:
         for name in masks:
             masks[name] = cv2.erode(masks[name] & ~exclusion, erode)
 
-        # Ne garder que les pixels couleur peau (référence = joues)
-        skin = self._skin_color_mask(img, masks["joue_g"] | masks["joue_d"])
+        # Ne garder que les pixels couleur peau, zone par zone
+        lab = cv2.cvtColor(cv2.GaussianBlur(img, (0, 0), 2), cv2.COLOR_BGR2LAB).astype(np.float32)
         for name in masks:
-            masks[name] = cv2.erode(masks[name] & skin, erode)
+            masks[name] = cv2.erode(self._skin_color_mask(lab, masks[name]), erode)
         return masks, face_mask

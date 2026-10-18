@@ -20,14 +20,15 @@ NORM_EYE_DIST = 400          # px entre coins externes des yeux après mise à l
 EYE_DIST_MM = 90.0           # distance moyenne réelle (adulte) pour convertir px -> mm
 
 # --- Masque couleur de peau ----------------------------------------------
-SKIN_COLOR_TOLERANCE = 16    # écart Lab max à la couleur médiane des joues
+SKIN_COLOR_TOLERANCE = 16    # écart Lab max à la couleur de peau de la zone
+SKIN_L_WEIGHT = 0.4          # poids de la luminosité L* dans cet écart (< 1 : tolère l'éclairage)
 SKIN_HOLE_MAX_PX = 40000     # trous rebouchés (boutons, taches) jusqu'à ~2000 mm² dans l'image normalisée
 
 # --- Contrôle qualité de l'image ------------------------------------------
 MIN_EYE_DIST_RAW = 140       # en dessous : visage trop loin / trop petit
 MIN_BRIGHTNESS = 70          # luminance moyenne (0-255) minimale de la peau
 MAX_BRIGHTNESS = 220
-MIN_SHARPNESS = 40.0         # variance du Laplacien sur la peau
+MIN_SHARPNESS = 8.0           # variance du Laplacien sur la peau (Camera Module 3 : floue 2-5, nette ~16)
 
 # --- Acné (boutons rouges) -------------------------------------------------
 ACNE_RED_DELTA = 7.0         # excès de rougeur a* par rapport à la peau voisine
@@ -70,5 +71,8 @@ ACNE_CONF = 0.16                                     # F1 max sur la VALIDATION 
 ACNE_REF_EYE_DIST = 860      # px entre coins externes des yeux, médiane des photos ACNE04 (mesurée)
 USE_DL = True                # utiliser les modèles profonds s'ils sont présents
 WRINKLE_TTA = True           # double passage image + miroir (plus précis, 2x plus lent)
+# Taille d'entrée du U-Net rides : None = 1024 (taille d'entraînement, précis mais ~80 s sur
+# le Raspberry Pi 4) ; 512 = ~10 s sur le Pi. Le visage aligné est réduit puis le masque agrandi.
+WRINKLE_INPUT = None
 WRINKLE_MODEL = MODELS_DIR / "wrinkle_unet.onnx"    # U-Net entraîné sur FFHQ-Wrinkle
 WRINKLE_META = MODELS_DIR / "wrinkle_unet.json"
