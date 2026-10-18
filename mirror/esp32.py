@@ -70,15 +70,19 @@ class ESP32Link:
         except ValueError:
             return
         self.last_rx = time.time()
-        if msg.get("type") == "mesure":
-            self.latest = msg
+        if msg.get("type") == "mesure" or "distance_cm" in msg or "temp_peau" in msg:
+            mes = msg if msg.get("type") == "mesure" else from_uno(msg)
+            if not config.HAS_DISTANCE_SENSOR:
+                # Pas de capteur branché : l'entrée analogique flotte et donne une valeur au hasard
+                mes["dist_mm"] = None
+            self.latest = mes
+            if msg.get("type") != "mesure":
+                self.info = self.info or {"firmware": "Arduino Uno (SmartSkinAnalyzer, J. Salek)"}
+            return
         elif msg.get("type") == "hello":
             self.info = msg
         elif "erreur" in msg:
             self.info = {"erreur": msg["erreur"]}
-        elif "distance_cm" in msg or "temp_peau" in msg:
-            self.latest = from_uno(msg)
-            self.info = self.info or {"firmware": "Arduino Uno (SmartSkinAnalyzer, J. Salek)"}
 
     # -- accès -----------------------------------------------------------------
     @property
