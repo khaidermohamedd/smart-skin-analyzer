@@ -104,8 +104,10 @@ def screen_guide(dist):
     return _to_bgr(img)
 
 
-def screen_temperature(dist, n, need, left):
+def screen_temperature(dist, n, need, left, approach=0.0):
     """Après la photo : on rapproche la personne à ~20 cm pour lire la température de la peau."""
+    if not config.HAS_DISTANCE_SENSOR:
+        return _screen_temperature_no_distance(n, need, left, approach)
     img, d = _canvas()
     lo_ok, hi_ok = config.TEMP_DIST_MIN_MM, config.TEMP_DIST_MAX_MM
     if dist is None:
@@ -128,6 +130,25 @@ def screen_temperature(dist, n, need, left):
         d.polygon([(cx, y - 4), (cx - 10, y - 22), (cx + 10, y - 22)], fill=WHITE)
         _center(d, y + 30, f"{dist / 10:.0f} cm", 22, GREY)
     # Progression des lectures
+    for i in range(need):
+        cx = W / 2 + (i - (need - 1) / 2) * 34
+        fill = (0, 230, 120) if i < n else (60, 60, 60)
+        d.ellipse([cx - 10, 345, cx + 10, 365], fill=fill)
+    _center(d, 400, f"L'analyse de la photo continue en même temps  ·  {max(left, 0):.0f} s", 18, GREY)
+    return _to_bgr(img)
+
+
+def _screen_temperature_no_distance(n, need, left, approach):
+    """Sans capteur de distance : consigne + temps pour s'approcher, puis lectures."""
+    img, d = _canvas()
+    _center(d, 60, "Photo prise ✓  -  mesure de la température", 22, GREY)
+    if approach > 0:
+        _center(d, 120, "Approchez votre visage", 40, (0, 200, 255), bold=True)
+        _center(d, 175, "à environ 20 cm du capteur de température", 28, (0, 200, 255))
+        _center(d, 230, f"{approach:.0f}", 90, WHITE, bold=True)
+    else:
+        _center(d, 140, "Ne bougez pas...", 40, (0, 230, 120), bold=True)
+        _center(d, 200, "lecture de la température de la peau", 24, GREY)
     for i in range(need):
         cx = W / 2 + (i - (need - 1) / 2) * 34
         fill = (0, 230, 120) if i < n else (60, 60, 60)

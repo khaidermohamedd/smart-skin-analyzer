@@ -93,10 +93,18 @@ class Mirror:
         self.worker.start()
 
     def sample_temperature(self, now, dist):
-        """Garde les lectures du MLX90614 prises dans la zone fiable (10-30 cm)."""
+        """Garde les lectures du MLX90614 prises dans la zone fiable (10-30 cm).
+        Sans capteur de distance : après le temps laissé pour s'approcher, on garde les lectures
+        plausibles pour une peau proche (une main ou un visage loin donne une valeur trop basse)."""
         t = self.esp.latest.get("t_visage") if self.esp.latest else None
-        if (t is not None and dist is not None and now - self.t_sample >= config.TEMP_SAMPLE_PERIOD_S
-                and config.TEMP_DIST_MIN_MM <= dist <= config.TEMP_DIST_MAX_MM):
+        if t is None or now - self.t_sample < config.TEMP_SAMPLE_PERIOD_S:
+            return
+        if config.HAS_DISTANCE_SENSOR:
+            ok = dist is not None and config.TEMP_DIST_MIN_MM <= dist <= config.TEMP_DIST_MAX_MM
+        else:
+            lo, hi = config.TEMP_PLAUSIBLE
+            ok = now - self.t_state >= config.TEMP_APPROACH_S and lo <= t <= hi
+        if ok:
             self.temps.append((t, dist))
             self.t_sample = now
 
@@ -109,8 +117,13 @@ class Mirror:
         sensors = self.sensors()                          # air, humidité : dernière mesure
         if self.temps:                                    # température : médiane des lectures de près
             ts = sorted(t for t, _ in self.temps)
-            ds = sorted(d for _, d in self.temps)
-            sensors["t_visage"], sensors["dist_mm"] = ts[len(ts) // 2], ds[len(ds) // 2]
+            sensors["t_visage"] = ts[len(ts) // 2]
+            if config.HAS_DISTANCE_SENSOR:
+                ds = sorted(d for _, d in self.temps)
+                sensors["dist_mm"] = ds[len(ds) // 2]
+            else:
+                sensors["dist_mm"] = None
+                sensors["distance_consigne"] = True     # distance non mesurée : consigne de 20 cm
         sensors["type_peau"] = skin_type.estimate(sensors)
         payload = report_to_json(report)
         payload["capteurs"] = sensors
@@ -167,7 +180,9 @@ class Mirror:
             if present:
                 self.set_state("guidage")
             if live:
-                hint = "ESPACE pour analyser votre peau" if not self.esp.connected                     else "Approchez-vous pour analyser votre peau"
+                hint = ("ESPACE pour analyser votre peau"
+                        if not (self.esp.connected and config.HAS_DISTANCE_SENSOR)
+                        else "Approchez-vous pour analyser votre peau")
                 return ui.screen_live(frame, datetime.now().strftime("%H:%M"), hint)
             return ui.screen_idle(self.sensors(), self.esp.connected)
 
@@ -195,7 +210,8 @@ class Mirror:
             if left <= 0:
                 self.start_analysis()
                 if self.state == "temperature":
-                    return ui.screen_temperature(dist, 0, config.TEMP_SAMPLES, config.TEMP_TIMEOUT_S)
+                    return ui.screen_temperature(dist, 0, config.TEMP_SAMPLES, config.TEMP_TIMEOUT_S,
+                                                 approach=config.TEMP_APPROACH_S)
                 return ui.screen_analysis(self.t_state)
             if live:
                 return ui.screen_live(frame, "Ne bougez plus...", "Regardez la caméra", big=str(left))
@@ -206,7 +222,8 @@ class Mirror:
             left = config.TEMP_TIMEOUT_S - (now - self.t_state)
             if len(self.temps) >= config.TEMP_SAMPLES or left <= 0:
                 self.set_state("analyse")
-            return ui.screen_temperature(dist, len(self.temps), config.TEMP_SAMPLES, left)
+            return ui.screen_temperature(dist, len(self.temps), config.TEMP_SAMPLES, left,
+                                         approach=config.TEMP_APPROACH_S - (now - self.t_state))
 
         if s == "analyse":
             if self.worker and not self.worker.is_alive():
@@ -214,7 +231,8 @@ class Mirror:
             return ui.screen_analysis(self.t_state)
 
         if s == "resultats":
-            sensor_ok = self.esp.connected and self.esp.fresh      # sans capteur : pas de détection de départ
+            # Départ de la personne détecté seulement avec le capteur de distance
+            sensor_ok = self.esp.connected and self.esp.fresh and config.HAS_DISTANCE_SENSOR
             if now - self.t_state > config.RESULT_S or (sensor_ok and absent_long and now - self.t_state > 8):
                 self.set_state("attente")
             return ui.screen_results(*self.result)
@@ -236,6 +254,13 @@ class Mirror:
     def scenario(self, t):
         """Mode test : une personne arrive de loin, se place, puis repart."""
         e = self.esp
+        if not config.HAS_DISTANCE_SENSOR:              # sans capteur : on simule la touche ESPACE
+            if 2 < t and self.state == "attente" and not getattr(self, "_sim_pressed", False):
+                self._sim_pressed, self.manual = True, True
+                self.set_state("compte")
+            if self.state == "resultats" and time.time() - self.t_state > 1.5:
+                return False
+            return t < 600
         if 2 < t < 4:
             e.present, e.dist = True, 650
         elif t >= 4 and self.state == "temperature":

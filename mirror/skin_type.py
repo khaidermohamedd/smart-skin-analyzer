@@ -36,6 +36,12 @@ def estimate(sensors):
     d_mm = sensors.get("dist_mm")
     d_cm = d_mm / 10 if d_mm is not None else None
     fiable = d_cm is not None and DISTANCE_MIN_CM <= d_cm <= DISTANCE_MAX_CM
+    if d_cm is None and sensors.get("distance_consigne"):
+        # Pas de capteur de distance : lectures prises après la consigne « 20 cm » et filtrées
+        # (température plausible pour une peau proche) -> considérées comme fiables
+        kind = classifier_peau(t, h)
+        return {"type": kind, "label": LABELS[kind], "fiable": True,
+                "message": "à ~20 cm (consigne, distance non mesurée)", "court": "à ~20 cm (consigne)"}
     if d_cm is None:
         msg, short = "distance inconnue", "distance inconnue"
     elif fiable:

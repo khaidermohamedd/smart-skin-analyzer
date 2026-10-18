@@ -124,6 +124,10 @@ Arduino **Uno** + MLX90614 + DHT22 + **Sharp IR analogique** (A0), JSON toutes l
 - **Caméra non détectée** depuis le redémarrage du 18/10 (elle fonctionnait le 15/10 : 4 analyses dans
   `~/skin_history`). Le miroir affiche maintenant « Caméra non détectée » et réessaie au lieu de planter.
 - Arduino Uno pas encore branché sur le Pi.
+- **Pas de capteur de distance (Sharp) pour l'instant** : `HAS_DISTANCE_SENSOR = False` dans `mirror/config.py`.
+  Analyse lancée par la touche ESPACE ; température lue après la consigne « approchez-vous à 20 cm »
+  (4 s pour se placer), en ne gardant que les lectures plausibles 28-38,5 °C ; résultats affichés 30 s.
+  Remettre `True` quand le Sharp sera branché (rouge 5V, noir GND, jaune A0).
 
 ## 5. Reste à faire
 

@@ -20,11 +20,17 @@ COUNTDOWN_S = 3
 ABSENT_S = 4.0                     # plus personne devant depuis ... -> retour à l'attente
 RESULT_S = 15                      # durée d'affichage des résultats (s)
 
+# Capteur de distance (Sharp IR) branché ? Sans lui : analyse lancée par la touche ESPACE,
+# température lue après une consigne « approchez-vous à 20 cm » (lectures plausibles seulement).
+HAS_DISTANCE_SENSOR = False
+
 # --- Mesure de la température en 2 temps (le MLX90614 n'est fiable que de près) ---
 TEMP_DIST_MIN_MM = 100
 TEMP_DIST_MAX_MM = 300
 TEMP_SAMPLES = 4                   # lectures gardées (on prend la médiane)
 TEMP_SAMPLE_PERIOD_S = 0.4
+TEMP_APPROACH_S = 4                # sans capteur de distance : temps laissé pour s'approcher
+TEMP_PLAUSIBLE = (28.0, 38.5)      # °C : une lecture hors de cet intervalle n'est pas une peau proche
 TEMP_TIMEOUT_S = 12                # au-delà, on garde la dernière mesure (marquée peu fiable)
 
 # --- Caméra (Pi Camera Module 3) ---------------------------------------------
