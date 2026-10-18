@@ -109,6 +109,22 @@ Arduino **Uno** + MLX90614 + DHT22 + **Sharp IR analogique** (A0), JSON toutes l
   4 lectures dans 10-30 cm, médiane ; l'analyse IA tourne en parallèle (état `temperature` dans `app.py`).
 - Option non retenue pour l'instant : capteur capacitif d'hydratation au contact.
 
+## 4 ter. État du Raspberry Pi (18/10/2026)
+
+- Pi 4 Model B 4 Go, Raspberry Pi OS 13 (Trixie) 64 bits, Python 3.13, `pi@skinmirror` = **192.168.1.31**.
+  Accès SSH par la clé du PC d'origine (ajoutée dans `~/.ssh/authorized_keys`).
+- Projet dans `/home/pi/skin_ai` (copie, pas un dépôt Git). Des modifications faites directement sur le Pi
+  le 15/10 (rafale photo + mise au point sur le visage, aperçu caméra en direct, clavier evdev, extinction par
+  Échap maintenu, onnxruntime, MediaPipe retiré car il plante sur le Pi 4) ont été récupérées dans la branche
+  `pi-modifs` puis **fusionnées** dans `main` (commit 67a3187) et réinstallées sur le Pi. Sauvegarde de
+  l'ancienne version : `~/skin_ai_sauvegarde_avant_maj_20261018.tgz` sur le Pi.
+- Test complet sur le Pi (photo de test, capteurs simulés) : OK, type de peau OK.
+- **Temps d'analyse sur le Pi 4 : 114 s** (acné 44 s, rides 70 s avec 2 passages / 40 s avec 1, chargement
+  des modèles 10 s une seule fois). À optimiser.
+- **Caméra non détectée** depuis le redémarrage du 18/10 (elle fonctionnait le 15/10 : 4 analyses dans
+  `~/skin_history`). Le miroir affiche maintenant « Caméra non détectée » et réessaie au lieu de planter.
+- Arduino Uno pas encore branché sur le Pi.
+
 ## 5. Reste à faire
 
 - [ ] Câbler l'ESP32 (figure 8 du guide), téléverser le firmware (LED rouge → vert → bleu au démarrage),
