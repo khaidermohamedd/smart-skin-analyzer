@@ -780,7 +780,7 @@ set T=wsl -d skinai -u root -- bash /mnt/d/skin_ai/code/training/wsl_train.sh
         ["Choix", "Valeur", "Justification"],
         ["Architecture", "U-Net, encodeur ResNet-50 (ImageNet)", "Connexions de saut : conserve les détails fins ; encodeur pré-entraîné"],
         ["Résolution", "crops de 512 px pris dans des images de 1024 px", "Pas de réduction : une ride fait 3 à 6 px de large"],
-        ["Échantillonnage", "70 % de crops contenant une ride", "Les rides étant rares, le réseau en voit assez"],
+        ["Échantillonnage", "1 recadrage sur 2 centré sur une zone contenant des rides", "Les rides étant rares (0,7 % des pixels), le réseau en voit assez"],
         ["Perte", "Dice + 2 × Focal (α 0,75 ; γ 2)", "Adaptée aux classes très déséquilibrées (0,7 % de pixels)"],
         ["Augmentation", "miroir, rotation ±12°, échelle ±25 %, luminosité, teinte, bruit, JPEG, flou",
          "Robustesse à la caméra et à l'éclairage du miroir"],
